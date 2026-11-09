@@ -1,0 +1,62 @@
+{
+  "_format": "wekan-board-1.0.0",
+  "_id": "boardDemo00000001",
+  "title": "Demo Board",
+  "archived": false,
+  "permission": "private",
+  "members": [
+    {"userId": "userRobot00000001", "isAdmin": false, "isActive": true},
+    {"userId": "userAlice00000001", "isAdmin": true, "isActive": true}
+  ],
+  "users": [
+    {"_id": "userRobot00000001", "username": "robot", "profile": {"fullname": "Robot"}},
+    {"_id": "userAlice00000001", "username": "alice", "profile": {"fullname": "Alice Example"}}
+  ],
+  "labels": [
+    {"_id": "lblAlice", "name": "Alice", "color": "blue"},
+    {"_id": "lblRobot", "name": "Robot", "color": "green"},
+    {"_id": "lblDecision", "name": "Decision", "color": "orange"}
+  ],
+  "swimlanes": [
+    {"_id": "swimDefault000001", "title": "Default", "archived": false, "sort": 0}
+  ],
+  "lists": [
+    {"_id": "listBacklog000001", "title": "Backlog", "swimlaneId": "swimDefault000001", "archived": false, "sort": null},
+    {"_id": "listToDo000000001", "title": "To Do", "swimlaneId": "swimDefault000001", "archived": false, "sort": null},
+    {"_id": "listDoing00000001", "title": "Doing", "swimlaneId": "swimDefault000001", "archived": false, "sort": null,
+     "wipLimit": {"value": 2, "enabled": true}},
+    {"_id": "listWaiting000001", "title": "Waiting", "swimlaneId": "swimDefault000001", "archived": false, "sort": null,
+     "wipLimit": {"value": 5, "enabled": true, "soft": true}},
+    {"_id": "listDone000000001", "title": "Done", "swimlaneId": "swimDefault000001", "archived": false, "sort": null}
+  ],
+  "cards": [
+    {"_id": "cardOne0000000001", "cardNumber": 1, "title": "Set up the repo", "listId": "listDone000000001",
+     "swimlaneId": "swimDefault000001", "labelIds": ["lblAlice"], "assignees": [], "members": [],
+     "description": "Feeds: #2", "archived": false, "sort": -1, "userId": "userAlice00000001"},
+    {"_id": "cardTwo0000000001", "cardNumber": 2, "title": "Write the first command", "listId": "listDoing00000001",
+     "swimlaneId": "swimDefault000001", "labelIds": ["lblRobot"], "assignees": [], "members": [],
+     "description": "Depends on: #1", "archived": false, "sort": 0, "userId": "userRobot00000001"},
+    {"_id": "cardThree00000001", "cardNumber": 3, "title": "Decision: output format", "listId": "listBacklog000001",
+     "swimlaneId": "swimDefault000001", "labelIds": ["lblDecision"], "assignees": [], "members": [],
+     "description": "Depends on: #2", "archived": false, "sort": 0, "userId": "userRobot00000001"},
+    {"_id": "cardFour000000001", "cardNumber": 4, "title": "An old idea", "listId": "listBacklog000001",
+     "swimlaneId": "swimDefault000001", "labelIds": [], "assignees": [], "members": [],
+     "description": "", "archived": true, "sort": 1, "userId": "userAlice00000001"}
+  ],
+  "checklists": [
+    {"_id": "clTwoSteps0000001", "cardId": "cardTwo0000000001", "title": "Steps", "sort": 0},
+    {"_id": "clTwoChecks000001", "cardId": "cardTwo0000000001", "title": "Checks", "sort": 1}
+  ],
+  "checklistItems": [
+    {"_id": "itemTwoStep100001", "checklistId": "clTwoSteps0000001", "cardId": "cardTwo0000000001",
+     "title": "(1) Parse the arguments", "isFinished": true, "sort": 0},
+    {"_id": "itemTwoStep200001", "checklistId": "clTwoSteps0000001", "cardId": "cardTwo0000000001",
+     "title": "(2) Call the API", "isFinished": false, "sort": 1},
+    {"_id": "itemTwoStep300001", "checklistId": "clTwoSteps0000001", "cardId": "cardTwo0000000001",
+     "title": "(3) Print the result", "isFinished": false, "sort": 2},
+    {"_id": "itemTwoCheck10001", "checklistId": "clTwoChecks000001", "cardId": "cardTwo0000000001",
+     "title": "(1) Tests pass", "isFinished": false, "sort": 0}
+  ],
+  "comments": [],
+  "activities": []
+}

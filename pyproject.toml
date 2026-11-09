@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "wekan-cli"
+version = "0.1.0.dev0"
+description = "A command-line tool for a self-hosted Wekan: boards, cards, checklists."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.13"
+authors = [{ name = "Klaas Vogel" }]
+classifiers = [
+    "Environment :: Console",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Office/Business :: Scheduling",
+]
+dependencies = [
+    "httpx>=0.28",
+    "typer>=0.15",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "ruff",
+]
+
+[project.scripts]
+wekan = "wekan_cli.cli:main"
+
+[project.urls]
+Repository = "https://github.com/KlaasVogel/wekan_cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wekan_cli"]
+
+[tool.black]
+line-length = 120
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: talks to a real Wekan; skipped unless WEKAN_LIVE_BOARD is set",
+]
+addopts = "-m 'not live'"
