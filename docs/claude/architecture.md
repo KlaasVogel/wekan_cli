@@ -4,18 +4,19 @@
 
 | Module | Job | Status |
 |---|---|---|
-| `cli.py` | typer app: commands, options, output calls. No HTTP or parsing logic. `main()` turns errors into one stderr line + exit code. | skeleton |
+| `cli.py` | typer app: commands, options, output calls. No HTTP or parsing logic. `main()` turns errors into one stderr line + exit code. `make_client()` is the seam tests replace. | done (v0.1.0) |
 | `errors.py` | `WekanError` and subclasses, each with its exit code | done |
-| `config.py` | credentials parser, `~/.config/wekan/config.toml` (board/user aliases), `.wekan` lookup (current folder and up), board resolution with its source | planned (v0.1.0) |
-| `client.py` | `WekanClient` around `httpx.Client`: form-encoded login, Bearer token, token cache, one re-login on an auth failure, error mapping | planned (v0.1.0) |
-| `cache.py` | `~/.cache/wekan/`: the token (file 600, folder 700, atomic writes) | planned (v0.1.0) |
-| `models.py` | dataclasses: Board, Swimlane, WList, Card, Checklist, Item, Label, User, WipLimit | planned (v0.1.0) |
-| `resolve.py` | name → object: board (alias, ID, title), list (title per swimlane), card (`cardNumber`), item (number or text) | planned (v0.1.0) |
-| `output.py` | plain text, `--json`, later `--markdown` | planned (v0.1.0) |
+| `config.py` | credentials parser, `~/.config/wekan/config.toml` (board/user aliases), `.wekan` lookup (current folder and up), board resolution with its source | done (v0.1.0) |
+| `client.py` | `WekanClient` around `httpx.Client`: form-encoded login, Bearer token, token cache, one re-login on an auth failure, error mapping | done (v0.1.0) |
+| `cache.py` | `~/.cache/wekan/`: the token (file 600, folder 700, atomic writes) | done (v0.1.0) |
+| `models.py` | dataclasses built from the export: Board, Swimlane, WList, Card, Checklist, Item, Label, User, WipLimit; drops soft-deleted objects, orders by `sort` | done (v0.1.0) |
+| `resolve.py` | name → object: board (alias, ID, title), card (`cardNumber`); list and item matching come in v0.2.0 | done (v0.1.0) |
+| `output.py` | plain text and `--json`; `--markdown` comes in v0.3.0 | done (v0.1.0) |
 
 ## Data flow
 
-1. `cli.py` parses the command and resolves the board (`--board` > `WEKAN_BOARD` > `.wekan` > error).
+1. `cli.py` parses the command; `config.py` picks the board reference (`--board` > `WEKAN_BOARD` > `.wekan` > error)
+   and `resolve.py` matches it against `GET /api/users/:id/boards`.
 2. `client.py` fetches the **board export** (`GET /api/boards/:b/export`): one call returns cards with `cardNumber`,
    lists with `wipLimit`, swimlanes, labels, checklists, items and usernames. Every command reads it live, so nothing
    relies on an earlier call (people edit the board at the same time).
@@ -30,6 +31,8 @@ read if big boards get slow.
 
 - Login: `POST /users/login`, **form-encoded** (passwords can hold `+`/`=`). Then `Authorization: Bearer <token>` and
   `X-User-Id`. Tokens last 90 days. There is no working logout.
+- If Wekan can't reach its database, every call waits ~30 s and then answers `401`. The client uses a 10 s timeout
+  and treats a slow auth failure as a network problem (exit 6), without logging in again.
 - Auth failure: `401` on `/api/user`, but **`200` with an error body** (`"statusCode": 401`) on board routes.
 - Unknown routes answer **`200` with HTML**, not 404.
 - `GET /api/boards` is admin-only; use `GET /api/users/:userId/boards`.

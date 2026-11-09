@@ -2,7 +2,9 @@
 
 ## Code
 
-- Python `>=3.13`, `src/` layout, type hints everywhere (Pylance/pyright **strict** clean).
+- Python `>=3.13`, `src/` layout, type hints everywhere. **pyright strict** must report 0 errors (`[tool.pyright]` in
+  `pyproject.toml`; Pylance in VS Code reads the same section). After an `isinstance` check on JSON data, use
+  `cast(dict[str, Any], ...)` rather than `# pyright: ignore`.
 - Black, line length 120. ruff (`E`, `F`, `I`, `UP`, `B`, `SIM`).
 - Google-style docstrings for every non-obvious function and class.
 - `pathlib`, not `os.path`. `dataclasses` for data.

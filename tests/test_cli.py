@@ -1,12 +1,14 @@
 """Tests for the command layer and the error handling in ``main()``."""
 
 import sys
+from pathlib import Path
 
 import pytest
+from fakewekan import PASSWORD, TOKEN, FakeWekan
 from typer.testing import CliRunner
 
 from wekan_cli import __version__, cli
-from wekan_cli.errors import NotFoundError
+from wekan_cli.errors import AuthError, NotFoundError
 
 runner = CliRunner()
 
@@ -35,8 +37,8 @@ def test_pretty_exceptions_are_off() -> None:
 
 def _run_main(monkeypatch: pytest.MonkeyPatch, error: BaseException) -> None:
     def broken_app() -> None:
-        secret = "do-not-print-me"  # noqa: F841  (a local that a rich traceback would show)
-        raise error
+        secret = "do-not-print-me"  # a local that a rich traceback would show
+        raise error if secret else error
 
     monkeypatch.setattr(cli, "app", broken_app)
     monkeypatch.setattr(sys, "argv", ["wekan"])
@@ -81,3 +83,98 @@ def test_help_is_plain_text() -> None:
     result = runner.invoke(cli.app, ["--help"])
     assert result.exit_code == 0
     assert not set("╭╮╰╯│─") & set(result.output)
+
+
+# --- commands against the fake Wekan ------------------------------------------------------------------------------
+
+
+def write_dotwekan(board: str = "Demo Board") -> None:
+    Path(".wekan").write_text(f'board = "{board}"\n')
+
+
+def test_whoami(wired_cli: FakeWekan) -> None:
+    result = runner.invoke(cli.app, ["whoami"])
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "robot on https://wekan.example.com"
+
+
+def test_boards(wired_cli: FakeWekan) -> None:
+    result = runner.invoke(cli.app, ["boards"])
+    assert result.output.strip() == "Demo Board"
+    data = runner.invoke(cli.app, ["boards", "--json"]).output
+    assert '"id": "boardDemo00000001"' in data
+
+
+def test_board_from_dotwekan(wired_cli: FakeWekan) -> None:
+    write_dotwekan()
+    result = runner.invoke(cli.app, ["board"])
+    assert result.exit_code == 0, result.output
+    assert "== Doing [1/2 hard]" in result.output
+
+
+def test_board_flag_beats_env(wired_cli: FakeWekan, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("WEKAN_BOARD", "no such board")
+    result = runner.invoke(cli.app, ["board", "-b", "boardDemo00000001"])
+    assert result.exit_code == 0, result.output
+
+
+def test_card(wired_cli: FakeWekan) -> None:
+    write_dotwekan()
+    result = runner.invoke(cli.app, ["card", "2"])
+    assert result.exit_code == 0, result.output
+    assert "Steps [1/3]" in result.output
+
+
+def test_card_not_found(wired_cli: FakeWekan) -> None:
+    write_dotwekan()
+    result = runner.invoke(cli.app, ["card", "12"])
+    assert isinstance(result.exception, NotFoundError)
+
+
+def test_no_board_given(wired_cli: FakeWekan) -> None:
+    result = runner.invoke(cli.app, ["board"])
+    assert isinstance(result.exception, NotFoundError)
+    assert "no board given" in str(result.exception)
+
+
+def test_config_shows_sources_but_no_secrets(wired_cli: FakeWekan) -> None:
+    write_dotwekan()
+    runner.invoke(cli.app, ["whoami"])  # caches a token
+    result = runner.invoke(cli.app, ["config"])
+    assert result.exit_code == 0, result.output
+    assert "(default)" in result.output
+    assert "password: set" in result.output
+    assert "token: cached" in result.output
+    assert "board: Demo Board (from " in result.output
+    assert PASSWORD not in result.output and TOKEN not in result.output
+
+
+def test_world_readable_credentials_warn(wired_cli: FakeWekan, credentials_file: Path) -> None:
+    credentials_file.chmod(0o644)
+    result = runner.invoke(cli.app, ["whoami"])
+    assert "chmod 600" in result.output
+
+
+def test_wrong_password_via_main(
+    wired_cli: FakeWekan, credentials_file: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    credentials_file.write_text(credentials_file.read_text().replace(PASSWORD, "wrong+pw=x"))
+    monkeypatch.setattr(sys, "argv", ["wekan", "whoami"])
+    with pytest.raises(SystemExit) as info:
+        cli.main()
+    assert info.value.code == AuthError.exit_code
+    captured = capsys.readouterr()
+    assert captured.err.startswith("error: login failed")
+    for secret in ("wrong+pw=x", PASSWORD, TOKEN):
+        assert secret not in captured.err + captured.out
+
+
+@pytest.mark.parametrize(
+    "args", [["whoami"], ["boards", "--json"], ["board", "--ids"], ["card", "2", "--json"], ["config"]]
+)
+def test_no_command_prints_password_or_token(wired_cli: FakeWekan, args: list[str]) -> None:
+    write_dotwekan()
+    result = runner.invoke(cli.app, args)
+    assert result.exit_code == 0, result.output
+    assert PASSWORD not in result.output
+    assert TOKEN not in result.output
