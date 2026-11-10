@@ -4,8 +4,7 @@ A command-line tool for a self-hosted [Wekan](https://wekan.github.io/) board: r
 items, move cards, all addressed the way people do (card `#14`, list `Doing`, item `(2)`). Short plain-text output by
 default, `--json` for scripts, and distinct exit codes, so both people and coding agents can use it.
 
-**Status: early development.** v0.1.0 reads boards and cards; v0.2.0 (in progress) changes them. See
-`docs/changelog/`.
+**Status: early development.** v0.1.0 reads boards and cards; v0.2.0 changes them. See `docs/changelog/`.
 
 ## Usage
 
@@ -21,6 +20,9 @@ wekan add-item 14 "Write the tests" --numbered   # adds "(4) Write the tests"
 wekan tick 14 2 3            # tick items (2) and (3); --undo to untick
 wekan move 14 Doing --from "To Do"               # refuses a full hard WIP limit (--over-wip to override)
 wekan describe 14 --file notes.md                # replace the description (- reads stdin)
+wekan new-card Backlog "Write the docs" --labels Docs   # prints the new card's number
+wekan label 14 PR            # --remove takes it off; other labels stay
+wekan delete-item 14 3 --yes # without --yes it only says what it would delete
 ```
 
 Every change is read back and printed as `from → to (verified)`. Options such as `--board` and `--credentials` can go

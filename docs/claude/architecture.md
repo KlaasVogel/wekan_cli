@@ -11,7 +11,7 @@
 | `cache.py` | `~/.cache/wekan/`: the token (file 600, folder 700, atomic writes) | done (v0.1.0) |
 | `models.py` | dataclasses built from the export: Board, Swimlane, WList, Card, Checklist, Item, Label, User, WipLimit; drops soft-deleted objects, orders by `sort` | done (v0.1.0) |
 | `resolve.py` | name → object: board (alias, ID, title), card (`cardNumber`), list (title, swimlane), checklist, items (`(N)` or part of the title, across checklists) | done (v0.2.0) |
-| `actions.py` | the write commands: change, read back from a fresh export, return a `Change` (no typer, no printing) | v0.2.0 PR A: add-item, tick, move, describe |
+| `actions.py` | the write commands: change, read back from a fresh export, return a `Change` (no typer, no printing) | done (v0.2.0): add-item, tick, move, describe, new-card, label, delete-item |
 | `output.py` | plain text and `--json` (boards, cards, changes); `--markdown` comes in v0.3.0 | done (v0.2.0) |
 
 ## Data flow

@@ -245,10 +245,42 @@ def test_command_credentials_beat_the_global_one(wired_cli: FakeWekan, credentia
 
 
 @pytest.mark.parametrize(
-    "args", [["add-item", "3", "x"], ["tick", "2", "2"], ["move", "3", "Doing"], ["describe", "3", "--file", "-"]]
+    "args",
+    [
+        ["add-item", "3", "x"],
+        ["tick", "2", "2"],
+        ["move", "3", "Doing"],
+        ["describe", "3", "--file", "-"],
+        ["new-card", "Backlog", "x"],
+        ["label", "3", "Robot"],
+        ["delete-item", "2", "3", "--yes"],
+    ],
 )
 def test_write_commands_print_no_secrets(wired_cli: FakeWekan, args: list[str]) -> None:
     write_dotwekan()
     result = runner.invoke(cli.app, args, input="text\n")
     assert result.exit_code == 0, result.output
     assert PASSWORD not in result.output and TOKEN not in result.output
+
+
+def test_new_card_cli(wired_cli: FakeWekan) -> None:
+    write_dotwekan()
+    Path("card.md").write_text("Feeds: #3\n")
+    result = runner.invoke(
+        cli.app, ["new-card", "Backlog", "Docs card", "--labels", "Robot, Alice", "--file", "card.md"]
+    )
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "#5 Docs card: new → Backlog (verified)"
+
+
+def test_label_cli(wired_cli: FakeWekan) -> None:
+    write_dotwekan()
+    result = runner.invoke(cli.app, ["label", "3", "Robot", "--json"])
+    assert json.loads(result.output)["after"] == "on"
+
+
+def test_delete_item_without_yes(wired_cli: FakeWekan) -> None:
+    write_dotwekan()
+    result = runner.invoke(cli.app, ["delete-item", "2", "3"])
+    assert isinstance(result.exception, RefusedError)
+    assert "add --yes" in str(result.exception)
