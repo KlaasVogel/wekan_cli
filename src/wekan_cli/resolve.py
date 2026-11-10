@@ -7,7 +7,7 @@ from typing import Any
 
 from wekan_cli.config import Aliases
 from wekan_cli.errors import AmbiguousError, NotFoundError
-from wekan_cli.models import Board, Card, Checklist, Item, WList
+from wekan_cli.models import Board, Card, Checklist, Item, Label, WList
 
 
 def resolve_board(ref: str, boards: list[dict[str, Any]], aliases: Aliases) -> tuple[str, str]:
@@ -160,3 +160,27 @@ def find_items(board: Board, card: Card, patterns: list[str], all_matches: bool 
             )
         found.extend(m for m in hits if m not in found)
     return found
+
+
+def find_label(board: Board, name: str) -> Label:
+    """Find a board label by name (case-insensitive), or by colour for a label without a name.
+
+    Args:
+        board: The board.
+        name: The label name (or colour) the user gave.
+
+    Returns:
+        The label.
+
+    Raises:
+        NotFoundError: No such label; the message lists the board's labels.
+        AmbiguousError: Several labels have this name.
+    """
+    wanted = name.casefold()
+    matches = [lb for lb in board.labels.values() if (lb.name or lb.color).casefold() == wanted]
+    if not matches:
+        names = ", ".join(lb.name or lb.color for lb in board.labels.values()) or "none"
+        raise NotFoundError(f"no label {name!r} on board {board.title} (labels: {names})")
+    if len(matches) > 1:
+        raise AmbiguousError(f"{len(matches)} labels are called {name!r} on board {board.title}")
+    return matches[0]

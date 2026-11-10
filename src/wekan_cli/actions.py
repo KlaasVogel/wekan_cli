@@ -11,8 +11,8 @@ from typing import Any, cast
 
 from wekan_cli.client import WekanClient
 from wekan_cli.errors import NotFoundError, RefusedError, VerifyError
-from wekan_cli.models import Board, Card, Checklist, Item
-from wekan_cli.resolve import find_checklist, find_items, find_list
+from wekan_cli.models import Board, Card, Checklist, Item, WList
+from wekan_cli.resolve import find_checklist, find_items, find_label, find_list
 
 #: Title of the checklist ``add-item`` creates on a card without one.
 DEFAULT_CHECKLIST = "Steps"
@@ -82,7 +82,7 @@ def _verify(changes: list[Change], checks: list[Callable[[Board], bool]], fresh:
     for change, check in zip(changes, checks, strict=True):
         change.verified = check(fresh)
         if change.changed and not change.verified:
-            failed.append(f"#{change.card} {change.subject}")
+            failed.append(f"#{change.card} {change.subject}" if change.card else change.subject)
     if failed:
         raise VerifyError("sent, but a fresh read doesn't show the change: " + ", ".join(failed))
 
@@ -216,6 +216,23 @@ def tick(
     return changes
 
 
+def _wip_check(board: Board, target: WList, over_wip: bool, verb: str) -> list[str]:
+    """Refuse a card into a full hard-limited list (unless ``over_wip``); return a warning for a full list.
+
+    The API ignores WIP limits, so the tool keeps to them, as the browser does for people.
+    """
+    if target.wip is None:
+        return []
+    count = len(board.cards_in(target.id))
+    if count < target.wip.value:
+        return []
+    full = f"{target.title} is full ({count}/{target.wip.value}"
+    if target.wip.hard and not over_wip:
+        raise RefusedError(f"{full}, hard limit); finish a card there first, or use --over-wip")
+    kind = f"hard limit, {verb} with --over-wip" if target.wip.hard else "soft limit"
+    return [f"{full}, {kind})"]
+
+
 # --- move ---------------------------------------------------------------------------------------------------------
 
 
@@ -257,14 +274,7 @@ def move(
     if not change.changed:
         change.verified = True
         return change
-    if target.wip is not None:
-        count = len(board.cards_in(target.id))
-        if count >= target.wip.value:
-            full = f"{target.title} is full ({count}/{target.wip.value}"
-            if target.wip.hard and not over_wip:
-                raise RefusedError(f"{full}, hard limit); finish a card there first, or use --over-wip")
-            kind = "hard limit, moved with --over-wip" if target.wip.hard else "soft limit"
-            change.warnings.append(f"{full}, {kind})")
+    change.warnings.extend(_wip_check(board, target, over_wip, "moved"))
     body: dict[str, str] = {"listId": target.id}
     if target.swimlane_id and target.swimlane_id != card.swimlane_id:
         body["swimlaneId"] = target.swimlane_id
@@ -318,4 +328,140 @@ def describe(client: WekanClient, board: Board, card: Card, text: str) -> Change
         return updated is not None and updated.description.rstrip() == new.rstrip()
 
     _verify([change], [check], _reread(client, board))
+    return change
+
+
+# --- new-card -----------------------------------------------------------------------------------------------------
+
+
+def new_card(
+    client: WekanClient,
+    board: Board,
+    list_title: str,
+    title: str,
+    description: str = "",
+    labels: list[str] | None = None,
+    swimlane: str | None = None,
+    force: bool = False,
+    over_wip: bool = False,
+) -> Change:
+    """Create a card at the top of a list, with the logged-in account as its author.
+
+    Args:
+        client: The API client.
+        board: The board as just read.
+        list_title: The list to create it in.
+        title: The card title.
+        description: Its description (Markdown), or "".
+        labels: Label names to put on it.
+        swimlane: Swimlane title, when the list title repeats across swimlanes.
+        force: Create it even when a card with this title exists.
+        over_wip: Create it in a full hard-limited list anyway.
+
+    Returns:
+        The change; ``card`` holds the new card's number.
+
+    Raises:
+        RefusedError: A card with this title exists (without ``force``), or the list's hard WIP limit is reached.
+        NotFoundError: The list or a label doesn't exist.
+        VerifyError: The card isn't in a fresh export as asked.
+    """
+    target = find_list(board, list_title, swimlane)
+    twin = next((c for c in board.cards if not c.archived and c.title.casefold() == title.strip().casefold()), None)
+    if twin is not None and not force:
+        raise RefusedError(f"#{twin.number} already has the title {title!r}; use --force to make a second one")
+    label_ids = [find_label(board, name).id for name in labels or []]
+    change = Change(0, title, None, target.title)
+    change.warnings.extend(_wip_check(board, target, over_wip, "created"))
+    lane_id = target.swimlane_id or next((s.id for s in board.swimlanes if not s.archived), "")
+    body: dict[str, str] = {"title": title, "authorId": client.user_id, "swimlaneId": lane_id}
+    if description.strip():
+        body["description"] = description.rstrip()
+    card_id = _new_id(client.post(f"/api/boards/{board.id}/lists/{target.id}/cards", body))
+    if not card_id:
+        raise VerifyError(f"{title!r}: Wekan didn't return the new card's ID")
+    if label_ids:
+        # POST ignores labelIds: set them with a PUT afterwards.
+        client.put(f"/api/boards/{board.id}/lists/{target.id}/cards/{card_id}", {"labelIds": label_ids})
+
+    def check(fresh: Board) -> bool:
+        created = next((c for c in fresh.cards if c.id == card_id), None)
+        if created is None:
+            return False
+        change.card = created.number  # Wekan numbers the card; known only after the read-back
+        return created.title == title and created.list_id == target.id and set(created.label_ids) == set(label_ids)
+
+    _verify([change], [check], _reread(client, board))
+    return change
+
+
+# --- label --------------------------------------------------------------------------------------------------------
+
+
+def label(client: WekanClient, board: Board, card: Card, name: str, remove: bool = False) -> Change:
+    """Put a label on a card, or take it off. The other labels stay (Wekan replaces the whole set on a ``PUT``).
+
+    Args:
+        client: The API client.
+        board: The board as just read.
+        card: The card.
+        name: The label name (or colour, for a label without a name).
+        remove: Take the label off instead.
+
+    Returns:
+        The change (``changed`` False when the card already has, or lacks, the label).
+
+    Raises:
+        NotFoundError: No such label on the board.
+        VerifyError: A fresh export shows a different set of labels.
+    """
+    found = find_label(board, name)
+    has = found.id in card.label_ids
+    change = Change(
+        card.number, f"label {found.name or found.color}", "on" if has else "off", "off" if remove else "on"
+    )
+    change.changed = has == remove
+    if not change.changed:
+        change.verified = True
+        return change
+    new_ids = [i for i in card.label_ids if i != found.id] if remove else [*card.label_ids, found.id]
+    client.put(f"/api/boards/{board.id}/lists/{card.list_id}/cards/{card.id}", {"labelIds": new_ids})
+
+    def check(fresh: Board) -> bool:
+        updated = next((c for c in fresh.cards if c.id == card.id), None)
+        return updated is not None and set(updated.label_ids) == set(new_ids)
+
+    _verify([change], [check], _reread(client, board))
+    return change
+
+
+# --- delete-item --------------------------------------------------------------------------------------------------
+
+
+def delete_item(client: WekanClient, board: Board, card: Card, pattern: str, yes: bool = False) -> Change:
+    """Delete one checklist item. Wekan's delete is a hard delete, so it needs ``yes``.
+
+    Args:
+        client: The API client.
+        board: The board as just read.
+        card: The card.
+        pattern: Which item (see ``resolve.find_items``); it must match exactly one.
+        yes: Really delete. Without it, nothing is sent and the refusal names the item.
+
+    Returns:
+        The change.
+
+    Raises:
+        NotFoundError: No item matches.
+        AmbiguousError: Several items match.
+        RefusedError: ``yes`` wasn't given.
+        VerifyError: The item is still in a fresh export.
+    """
+    (match,) = find_items(board, card, [pattern])
+    subject = f"{match.checklist.title}: {match.item.title}"
+    if not yes:
+        raise RefusedError(f"would delete #{card.number} {subject} (it can't be restored); add --yes to delete it")
+    change = Change(card.number, subject, _item_state(match.item.finished), "deleted")
+    client.delete(f"{_card_path(board, card)}/checklists/{match.checklist.id}/items/{match.item.id}")
+    _verify([change], [lambda fresh: _find_item(fresh, match.item.id) is None], _reread(client, board))
     return change

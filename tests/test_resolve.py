@@ -6,7 +6,7 @@ from fakewekan import load_fixture
 from wekan_cli.config import Aliases
 from wekan_cli.errors import AmbiguousError, NotFoundError
 from wekan_cli.models import Board
-from wekan_cli.resolve import find_card, find_checklist, find_items, find_list, resolve_board
+from wekan_cli.resolve import find_card, find_checklist, find_items, find_label, find_list, resolve_board
 
 BOARDS = [{"_id": "b1", "title": "Demo Board"}, {"_id": "b2", "title": "Other"}, {"_id": "b3", "title": "Twin"}]
 
@@ -110,3 +110,16 @@ def test_find_items_dedupes_and_keeps_checklist() -> None:
         ("Steps", "(1) Parse the arguments"),
         ("Checks", "(1) Tests pass"),
     ]
+
+
+def test_find_label() -> None:
+    assert find_label(DEMO, "decision").id == "lblDecision"
+    with pytest.raises(NotFoundError, match="labels: Alice, Robot, Decision"):
+        find_label(DEMO, "PR")
+
+
+def test_find_label_twice_the_same_name() -> None:
+    data = load_fixture("board_export.json")
+    data["labels"].append({"_id": "lblRobot2", "name": "robot", "color": "red"})
+    with pytest.raises(AmbiguousError):
+        find_label(Board.from_export(data), "Robot")

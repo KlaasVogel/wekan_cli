@@ -97,3 +97,17 @@ def test_empty_description_is_refused(http: httpx.Client) -> None:
     path = "/api/boards/boardDemo00000001/lists/listDoing00000001/cards/cardTwo0000000001"
     response = http.put(path, json={"description": ""}, headers=AUTH)
     assert response.status_code == 404 and response.json() == {"message": "Error"}
+
+
+def test_card_post_ignores_label_ids(fake_wekan: FakeWekan, http: httpx.Client) -> None:
+    body = {"title": "New", "authorId": USER_ID, "swimlaneId": "swimDefault000001", "labelIds": ["lblRobot"]}
+    created = http.post("/api/boards/boardDemo00000001/lists/listToDo000000001/cards", json=body, headers=AUTH)
+    card = fake_wekan.find("boardDemo00000001", "cards", created.json()["_id"])
+    assert card is not None and card["labelIds"] == [] and card["cardNumber"] == 5
+
+
+def test_item_delete_is_hard(fake_wekan: FakeWekan, http: httpx.Client) -> None:
+    path = f"{CARD_TWO}/checklists/clTwoSteps0000001/items/itemTwoStep300001"
+    assert http.delete(path, headers=AUTH).status_code == 200
+    assert fake_wekan.find("boardDemo00000001", "checklistItems", "itemTwoStep300001") is None
+    assert http.delete(path, headers=AUTH).status_code == 404

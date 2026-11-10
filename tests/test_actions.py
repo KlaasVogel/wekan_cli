@@ -3,7 +3,7 @@
 from collections.abc import Iterator
 
 import pytest
-from fakewekan import FakeWekan
+from fakewekan import USER_ID, FakeWekan
 
 from wekan_cli import actions
 from wekan_cli.client import WekanClient
@@ -204,3 +204,106 @@ def test_describe_clear_sends_a_space(client: WekanClient, fake_wekan: FakeWekan
     change = actions.describe(client, *card(client, 3), "\n")
     assert (change.before, change.after, change.verified) == ("1 line", "empty", True)
     assert fake_wekan.requests[-2].content == b'{"description":" "}'
+
+
+# --- new-card -----------------------------------------------------------------------------------------------------
+
+
+def test_new_card_with_labels_and_description(client: WekanClient, fake_wekan: FakeWekan) -> None:
+    change = actions.new_card(
+        client, read(client), "to do", "Write the docs", "Depends on: #2\n", ["robot", "Decision"]
+    )
+    assert (change.card, change.subject, change.before, change.after, change.verified) == (
+        5,
+        "Write the docs",
+        None,
+        "To Do",
+        True,
+    )
+    raw = next(c for c in fake_wekan.boards[BOARD_ID]["cards"] if c["cardNumber"] == 5)
+    assert raw["userId"] == USER_ID and raw["swimlaneId"] == "swimDefault000001"
+    assert raw["labelIds"] == ["lblRobot", "lblDecision"] and raw["description"] == "Depends on: #2"
+
+
+def test_new_card_duplicate_title_is_refused(client: WekanClient, fake_wekan: FakeWekan) -> None:
+    with pytest.raises(RefusedError, match="#2 already has the title"):
+        actions.new_card(client, read(client), "Backlog", "write the FIRST command")
+    assert writes(fake_wekan) == 0
+    assert actions.new_card(client, read(client), "Backlog", "Write the first command", force=True).verified
+
+
+def test_new_card_archived_twin_is_no_duplicate(client: WekanClient) -> None:
+    assert actions.new_card(client, read(client), "Backlog", "An old idea").verified
+
+
+def test_new_card_unknown_label_sends_nothing(client: WekanClient, fake_wekan: FakeWekan) -> None:
+    with pytest.raises(NotFoundError, match="labels: Alice, Robot, Decision"):
+        actions.new_card(client, read(client), "Backlog", "New", labels=["Nope"])
+    assert writes(fake_wekan) == 0
+
+
+def test_new_card_keeps_to_hard_wip(client: WekanClient) -> None:
+    actions.move(client, *card(client, 3), "Doing")  # Doing: 2/2
+    with pytest.raises(RefusedError, match="Doing is full"):
+        actions.new_card(client, read(client), "Doing", "One too many")
+    change = actions.new_card(client, read(client), "Doing", "One too many", over_wip=True)
+    assert "hard limit, created with --over-wip" in change.warnings[0]
+
+
+def test_new_card_verify_failure(client: WekanClient, fake_wekan: FakeWekan) -> None:
+    board = read(client)
+    fake_wekan.drop_writes = True
+    with pytest.raises(VerifyError, match="Ghost card"):
+        actions.new_card(client, board, "Backlog", "Ghost card")
+
+
+# --- label --------------------------------------------------------------------------------------------------------
+
+
+def test_label_add_keeps_the_others(client: WekanClient) -> None:
+    change = actions.label(client, *card(client, 2), "decision")
+    assert (change.subject, change.before, change.after, change.verified) == ("label Decision", "off", "on", True)
+    assert find_card(read(client), 2).label_ids == ("lblRobot", "lblDecision")
+
+
+def test_label_remove(client: WekanClient) -> None:
+    change = actions.label(client, *card(client, 2), "Robot", remove=True)
+    assert change.after == "off" and find_card(read(client), 2).label_ids == ()
+
+
+def test_label_already_there_sends_nothing(client: WekanClient, fake_wekan: FakeWekan) -> None:
+    assert not actions.label(client, *card(client, 2), "Robot").changed
+    assert not actions.label(client, *card(client, 2), "Alice", remove=True).changed
+    assert writes(fake_wekan) == 0
+
+
+def test_label_by_colour_when_unnamed(client: WekanClient, fake_wekan: FakeWekan) -> None:
+    fake_wekan.boards[BOARD_ID]["labels"].append({"_id": "lblRed", "name": "", "color": "red"})
+    assert actions.label(client, *card(client, 3), "RED").subject == "label red"
+
+
+# --- delete-item --------------------------------------------------------------------------------------------------
+
+
+def test_delete_item_needs_yes(client: WekanClient, fake_wekan: FakeWekan) -> None:
+    with pytest.raises(RefusedError, match=r"would delete #2 Steps: \(3\) Print the result"):
+        actions.delete_item(client, *card(client, 2), "3")
+    assert writes(fake_wekan) == 0
+
+
+def test_delete_item(client: WekanClient) -> None:
+    change = actions.delete_item(client, *card(client, 2), "print", yes=True)
+    assert (change.before, change.after, change.verified) == ("open", "deleted", True)
+    assert "(3) Print the result" not in item_titles(read(client), 2)
+
+
+def test_delete_item_must_match_one(client: WekanClient) -> None:
+    with pytest.raises(AmbiguousError):
+        actions.delete_item(client, *card(client, 2), "1", yes=True)
+
+
+def test_delete_item_verify_failure(client: WekanClient, fake_wekan: FakeWekan) -> None:
+    board, c = card(client, 2)
+    fake_wekan.drop_writes = True
+    with pytest.raises(VerifyError):
+        actions.delete_item(client, board, c, "3", yes=True)

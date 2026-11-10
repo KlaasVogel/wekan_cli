@@ -25,8 +25,12 @@
 WEKAN_LIVE_BOARD=<board id> .venv/bin/pytest -m live
 ```
 
-Planned, not written yet. Rules:
+`tests/test_live.py` runs every write command once:
 
 - Only against a throwaway board, never a board in use. The suite refuses to run unless the board's title contains
   "test" (any case).
-- Each test creates its own card and cleans up its checklist items afterwards.
+- One card per run (`wekan-cli live test <date time>`); its checklist items are deleted afterwards. The card stays:
+  the API's card delete can't be undone, so archive it by hand.
+- The label test is skipped on a board without labels.
+- The module reads `WEKAN_CREDENTIALS` and the cache folder when it's imported, before `conftest.py` isolates `HOME`,
+  so it uses the real credentials and token cache (no new login per run).

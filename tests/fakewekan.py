@@ -8,6 +8,8 @@ It answers like the real Wekan REST API does, including its quirks:
   labels and usernames;
 - a card ``PUT`` through a list the card isn't in answers ``200`` with an empty body and changes nothing;
 - a card ``PUT`` with an empty ``description`` answers ``404 {"message": "Error"}`` (a single space works);
+- a card ``POST`` ignores ``labelIds`` (set them with a ``PUT``); ``labelIds`` on a ``PUT`` replaces the whole set;
+- an item ``DELETE`` is a hard delete;
 - writes ignore WIP limits (the tool has to enforce them).
 
 The board data comes from a JSON fixture in the export's shape. Every ID, name and title in it is made up.
@@ -92,6 +94,8 @@ class FakeWekan:
             ("POST", re.compile(card + r"/checklists/(?P<cl>[^/]+)/items"), self._add_item, True),
             ("PUT", re.compile(card + r"/checklists/(?P<cl>[^/]+)/items/(?P<item>[^/]+)"), self._put_item, True),
             ("PUT", re.compile(board + r"/lists/(?P<list>[^/]+)/cards/(?P<card>[^/]+)"), self._put_card, True),
+            ("POST", re.compile(board + r"/lists/(?P<list>[^/]+)/cards"), self._add_card, True),
+            ("DELETE", re.compile(card + r"/checklists/(?P<cl>[^/]+)/items/(?P<item>[^/]+)"), self._delete_item, True),
         ]
 
     @classmethod
@@ -225,5 +229,36 @@ class FakeWekan:
         if body.get("description") == "":
             return httpx.Response(404, json={"message": "Error"})
         if not self.drop_writes:
-            card.update({k: v for k, v in body.items() if k in ("listId", "swimlaneId", "description", "title")})
+            allowed = ("listId", "swimlaneId", "description", "title", "labelIds")
+            card.update({k: v for k, v in body.items() if k in allowed})
         return httpx.Response(200, json={"_id": card["_id"]})
+
+    def _add_card(self, request: httpx.Request, match: re.Match[str]) -> httpx.Response:
+        board = self.boards[match["board"]]
+        body = self._body(request)
+        new: dict[str, Any] = {
+            "_id": self._new_id("card"),
+            "cardNumber": max((c.get("cardNumber") or 0 for c in board["cards"]), default=0) + 1,
+            "title": body["title"],
+            "listId": match["list"],
+            "swimlaneId": body.get("swimlaneId", ""),
+            "labelIds": [],  # Wekan ignores labelIds on a POST
+            "assignees": [],
+            "members": [],
+            "description": body.get("description", ""),
+            "archived": False,
+            "sort": -1,  # a new card goes to the top
+            "userId": body.get("authorId", ""),
+        }
+        if not self.drop_writes:
+            board["cards"].append(new)
+        return httpx.Response(200, json={"_id": new["_id"]})
+
+    def _delete_item(self, _request: httpx.Request, match: re.Match[str]) -> httpx.Response:
+        board = self.boards[match["board"]]
+        item = self.find(match["board"], "checklistItems", match["item"])
+        if item is None:
+            return httpx.Response(404, json={"error": "Item not found"})
+        if not self.drop_writes:
+            board["checklistItems"].remove(item)
+        return httpx.Response(200, json={"_id": item["_id"]})

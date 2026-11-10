@@ -343,6 +343,78 @@ def describe(
     _echo_changes([change], json, single=True)
 
 
+@app.command("new-card")
+def new_card(
+    ctx: typer.Context,
+    to_list: Annotated[str, typer.Argument(metavar="LIST", help="List title (case-insensitive).")],
+    title: Annotated[str, typer.Argument(help="The card's title.")],
+    file: Annotated[
+        str | None, typer.Option("--file", help="File with the description (Markdown), or - for stdin.")
+    ] = None,
+    labels: Annotated[str | None, typer.Option("--labels", help="Labels to put on it, comma-separated.")] = None,
+    swimlane: Annotated[
+        str | None, typer.Option("--swimlane", help="Swimlane, when the list title repeats across swimlanes.")
+    ] = None,
+    force: Annotated[bool, typer.Option("--force", help="Create it even when a card has this title.")] = False,
+    over_wip: Annotated[
+        bool, typer.Option("--over-wip", help="Create it in a full hard-limited list anyway (an OK'd exception).")
+    ] = False,
+    board: BoardOpt = None,
+    json: JsonOpt = False,
+    credentials: CredentialsOpt = None,
+) -> None:
+    """Create a card at the top of a list, with you as its author. Refuses a duplicate title (exit 7).
+
+    Example: wekan new-card Backlog "Write the docs" --labels Docs --file card.md
+    """
+    description = _read_text(file) if file is not None else ""
+    names = [n.strip() for n in labels.split(",") if n.strip()] if labels else []
+    with make_client(_load_credentials(ctx, credentials)) as client:
+        data = _open_board(client, board)
+        change = actions.new_card(client, data, to_list, title, description, names, swimlane, force, over_wip)
+    _echo_changes([change], json, single=True)
+
+
+@app.command()
+def label(
+    ctx: typer.Context,
+    number: NumberArg,
+    name: Annotated[str, typer.Argument(metavar="LABEL", help="Label name (or colour, for a label without one).")],
+    remove: Annotated[bool, typer.Option("--remove", help="Take the label off instead.")] = False,
+    board: BoardOpt = None,
+    json: JsonOpt = False,
+    credentials: CredentialsOpt = None,
+) -> None:
+    """Put a label on a card (or take it off with --remove). Its other labels stay.
+
+    Example: wekan label 14 PR
+    """
+    with make_client(_load_credentials(ctx, credentials)) as client:
+        data = _open_board(client, board)
+        change = actions.label(client, data, find_card(data, number), name, remove)
+    _echo_changes([change], json, single=True)
+
+
+@app.command("delete-item")
+def delete_item(
+    ctx: typer.Context,
+    number: NumberArg,
+    match: Annotated[str, typer.Argument(help="The item: a number N matches '(N) …', other text part of the title.")],
+    yes: Annotated[bool, typer.Option("--yes", help="Really delete it (it can't be restored).")] = False,
+    board: BoardOpt = None,
+    json: JsonOpt = False,
+    credentials: CredentialsOpt = None,
+) -> None:
+    """Delete one checklist item. Without --yes it only says what it would delete (exit 7).
+
+    Example: wekan delete-item 14 3 --yes
+    """
+    with make_client(_load_credentials(ctx, credentials)) as client:
+        data = _open_board(client, board)
+        change = actions.delete_item(client, data, find_card(data, number), match, yes)
+    _echo_changes([change], json, single=True)
+
+
 def main() -> None:
     """Entry point: run the app and turn errors into one stderr line and an exit code.
 
