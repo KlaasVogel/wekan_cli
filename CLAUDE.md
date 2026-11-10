@@ -23,4 +23,5 @@ Details: `docs/claude/architecture.md`, `docs/claude/conventions.md`, `docs/clau
 .venv/bin/pytest            # unit tests
 .venv/bin/black --check .   # formatting (line length 120)
 .venv/bin/ruff check .      # lint
+.venv/bin/pyright            # types, strict (same as Pylance; first run downloads Node.js)
 ```

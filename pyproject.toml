@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wekan-cli"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "A command-line tool for a self-hosted Wekan: boards, cards, checklists."
 readme = "README.md"
 license = "MIT"
@@ -28,6 +28,7 @@ dev = [
     "pytest",
     "black",
     "ruff",
+    "pyright",
 ]
 
 [project.scripts]
@@ -48,6 +49,14 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pyright]
+# The same strict check Pylance runs in VS Code; Pylance reads this section too (it overrides the user setting).
+typeCheckingMode = "strict"
+pythonVersion = "3.13"
+include = ["src", "tests"]
+venvPath = "."
+venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

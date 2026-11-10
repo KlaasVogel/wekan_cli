@@ -4,7 +4,38 @@ A command-line tool for a self-hosted [Wekan](https://wekan.github.io/) board: r
 items, move cards, all addressed the way people do (card `#14`, list `Doing`, item `(2)`). Short plain-text output by
 default, `--json` for scripts, and distinct exit codes, so both people and coding agents can use it.
 
-**Status: early development.** Nothing works yet beyond `wekan --version`. See `docs/changelog/`.
+**Status: early development.** v0.1.0 reads boards and cards; changing them comes in v0.2.0. See `docs/changelog/`.
+
+## Usage
+
+```bash
+wekan whoami                 # check the login
+wekan boards                 # boards this account is a member of
+wekan board -b "My Board"    # lists (with WIP limits) and cards
+wekan card 14 -b "My Board"  # one card: description, checklists, items
+wekan card 14 --json         # the same as JSON
+wekan config                 # which settings are used, and where they come from
+```
+
+Pick the board with `--board/-b` (an alias, the board ID, or its title), the `WEKAN_BOARD` environment variable, or a
+`.wekan` file in the current folder or any folder above it:
+
+```toml
+board = "my-board"
+```
+
+Aliases live in `~/.config/wekan/config.toml`:
+
+```toml
+[boards]
+my-board = "<board id>"
+
+[users]
+alice = "<user id>"
+```
+
+Exit codes: 0 ok, 1 bug, 2 usage, 3 not found, 4 ambiguous, 5 login/credentials, 6 network or server, 7 refused,
+8 a change didn't show up when read back.
 
 ## Install (development)
 
