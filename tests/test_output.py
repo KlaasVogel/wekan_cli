@@ -4,8 +4,18 @@ import json
 
 from fakewekan import load_fixture
 
+from wekan_cli.actions import Change
 from wekan_cli.models import Board
-from wekan_cli.output import board_json, card_json, format_board, format_boards, format_card, to_json
+from wekan_cli.output import (
+    board_json,
+    card_json,
+    change_json,
+    format_board,
+    format_boards,
+    format_card,
+    format_change,
+    to_json,
+)
 
 BOARD = Board.from_export(load_fixture("board_export.json"))
 
@@ -60,3 +70,26 @@ def test_board_json_wip() -> None:
     doing = next(lst for lst in data["lists"] if lst["title"] == "Doing")
     assert doing["wip_limit"] == {"value": 2, "hard": True}
     assert [c["number"] for c in doing["cards"]] == [2]
+
+
+def test_change_lines() -> None:
+    done = Change(2, "Steps: (2) Call the API", "open", "done", verified=True)
+    assert format_change(done) == "#2 Steps: (2) Call the API: open → done (verified)"
+    new = Change(3, "Steps: Ask Alice", None, "open", verified=True, warnings=["created checklist 'Steps'"])
+    assert format_change(new) == "#3 Steps: Ask Alice: new → open (verified)\n  warning: created checklist 'Steps'"
+    noop = Change(2, "list", "Doing", "Doing", changed=False, verified=True)
+    assert format_change(noop) == "#2 list: unchanged (Doing)"
+    assert format_change(Change(2, "list", "A", "B")).endswith("(NOT verified)")
+
+
+def test_change_json() -> None:
+    data = change_json(Change(2, "list", "To Do", "Doing", verified=True))
+    assert data == {
+        "card": 2,
+        "subject": "list",
+        "before": "To Do",
+        "after": "Doing",
+        "changed": True,
+        "verified": True,
+        "warnings": [],
+    }

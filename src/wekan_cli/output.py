@@ -1,8 +1,10 @@
 """Plain-text and JSON output. Short by default: agents read this, and every line costs tokens."""
 
 import json
+from dataclasses import asdict
 from typing import Any
 
+from wekan_cli.actions import Change
 from wekan_cli.models import Board, Card, WList
 
 
@@ -142,3 +144,22 @@ def board_json(board: Board, include_archived: bool) -> dict[str, Any]:
             if include_archived or not lst.archived
         ],
     }
+
+
+def format_change(change: Change) -> str:
+    """One line per change: ``#2 Steps: (2) Call the API: open → done (verified)``, then any warnings.
+
+    A no-op says so (``unchanged (done)``) instead of showing an arrow.
+    """
+    if not change.changed:
+        line = f"#{change.card} {change.subject}: unchanged ({change.after})"
+    else:
+        before = change.before if change.before is not None else "new"
+        line = f"#{change.card} {change.subject}: {before} → {change.after}"
+        line += " (verified)" if change.verified else " (NOT verified)"
+    return "\n".join([line, *(f"  warning: {w}" for w in change.warnings)])
+
+
+def change_json(change: Change) -> dict[str, Any]:
+    """A change as a dict, for ``--json``."""
+    return asdict(change)

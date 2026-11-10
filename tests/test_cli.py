@@ -1,5 +1,6 @@
 """Tests for the command layer and the error handling in ``main()``."""
 
+import json
 import sys
 from pathlib import Path
 
@@ -8,7 +9,7 @@ from fakewekan import PASSWORD, TOKEN, FakeWekan
 from typer.testing import CliRunner
 
 from wekan_cli import __version__, cli
-from wekan_cli.errors import AuthError, NotFoundError
+from wekan_cli.errors import AmbiguousError, AuthError, NotFoundError, RefusedError
 
 runner = CliRunner()
 
@@ -178,3 +179,76 @@ def test_no_command_prints_password_or_token(wired_cli: FakeWekan, args: list[st
     assert result.exit_code == 0, result.output
     assert PASSWORD not in result.output
     assert TOKEN not in result.output
+
+
+# --- write commands -----------------------------------------------------------------------------------------------
+
+
+def test_add_item(wired_cli: FakeWekan) -> None:
+    write_dotwekan()
+    result = runner.invoke(cli.app, ["add-item", "2", "Lint", "--checklist", "Checks", "--numbered"])
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "#2 Checks: (2) Lint: new → open (verified)"
+
+
+def test_tick_json(wired_cli: FakeWekan) -> None:
+    write_dotwekan()
+    result = runner.invoke(cli.app, ["tick", "2", "2", "3", "--json"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert [c["after"] for c in data] == ["done", "done"] and all(c["verified"] for c in data)
+
+
+def test_tick_ambiguous_exit(wired_cli: FakeWekan) -> None:
+    write_dotwekan()
+    result = runner.invoke(cli.app, ["tick", "2", "1"])
+    assert isinstance(result.exception, AmbiguousError)
+
+
+def test_move_and_hard_wip(wired_cli: FakeWekan) -> None:
+    write_dotwekan()
+    result = runner.invoke(cli.app, ["move", "3", "doing", "--from", "backlog"])
+    assert result.output.strip() == "#3 list: Backlog → Doing (verified)"
+    result = runner.invoke(cli.app, ["move", "1", "Doing"])
+    assert isinstance(result.exception, RefusedError)
+    assert RefusedError.exit_code == 7
+
+
+def test_describe_from_file_and_stdin(wired_cli: FakeWekan) -> None:
+    write_dotwekan()
+    Path("desc.md").write_text("Depends on: #2\n\nMore text\n")
+    result = runner.invoke(cli.app, ["describe", "3", "--file", "desc.md"])
+    assert result.output.strip() == "#3 description: 1 line → 3 lines (verified)"
+    result = runner.invoke(cli.app, ["describe", "3", "--file", "-"], input="Short\n")
+    assert result.output.strip() == "#3 description: 3 lines → 1 line (verified)"
+
+
+def test_describe_missing_file(wired_cli: FakeWekan) -> None:
+    write_dotwekan()
+    result = runner.invoke(cli.app, ["describe", "3", "--file", "nope.md"])
+    assert isinstance(result.exception, NotFoundError)
+
+
+@pytest.mark.parametrize("args", [["boards"], ["whoami"], ["config"], ["card", "2", "-b", "Demo Board"]])
+def test_credentials_after_the_command(wired_cli: FakeWekan, credentials_file: Path, args: list[str]) -> None:
+    moved = credentials_file.parent / "elsewhere"
+    credentials_file.rename(moved)
+    result = runner.invoke(cli.app, [*args, "--credentials", str(moved)])
+    assert result.exit_code == 0, result.output
+    if args == ["config"]:
+        assert f"credentials: {moved} (--credentials)" in result.output
+
+
+def test_command_credentials_beat_the_global_one(wired_cli: FakeWekan, credentials_file: Path) -> None:
+    result = runner.invoke(cli.app, ["--credentials", "/nope", "whoami", "--credentials", str(credentials_file)])
+    assert result.exit_code == 0, result.output
+
+
+@pytest.mark.parametrize(
+    "args", [["add-item", "3", "x"], ["tick", "2", "2"], ["move", "3", "Doing"], ["describe", "3", "--file", "-"]]
+)
+def test_write_commands_print_no_secrets(wired_cli: FakeWekan, args: list[str]) -> None:
+    write_dotwekan()
+    result = runner.invoke(cli.app, args, input="text\n")
+    assert result.exit_code == 0, result.output
+    assert PASSWORD not in result.output and TOKEN not in result.output

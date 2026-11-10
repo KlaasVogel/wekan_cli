@@ -129,3 +129,20 @@ def test_errors_never_contain_secrets(credentials: Credentials, fake_wekan: Fake
         client.me()
     for secret in (credentials.password, "cached-secret-token", "Bearer"):
         assert secret not in str(info.value)
+
+
+def test_writes_send_json(credentials: Credentials, fake_wekan: FakeWekan) -> None:
+    base = "/api/boards/boardDemo00000001/cards/cardTwo0000000001/checklists/clTwoSteps0000001/items"
+    with make(credentials, fake_wekan) as client:
+        created = client.post(base, {"title": "New"})
+        client.put(f"{base}/{created['_id']}", {"isFinished": True})
+    post, put = fake_wekan.requests[-2:]
+    assert (post.method, put.method) == ("POST", "PUT")
+    assert post.headers["Content-Type"] == "application/json"
+    item = fake_wekan.find("boardDemo00000001", "checklistItems", created["_id"])
+    assert item is not None and item["isFinished"] is True
+
+
+def test_delete_maps_errors(credentials: Credentials, fake_wekan: FakeWekan) -> None:
+    with make(credentials, fake_wekan) as client, pytest.raises(WekanError, match="not an API route"):
+        client.delete("/api/boards/boardDemo00000001/nothing-here")
