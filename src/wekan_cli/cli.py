@@ -9,7 +9,7 @@ from typing import Annotated
 
 import typer
 
-from wekan_cli import __version__
+from wekan_cli import __version__, actions
 from wekan_cli.cache import TokenCache
 from wekan_cli.client import WekanClient
 from wekan_cli.config import (
@@ -20,9 +20,18 @@ from wekan_cli.config import (
     load_aliases,
     load_credentials,
 )
-from wekan_cli.errors import INTERNAL_ERROR_EXIT_CODE, WekanError
+from wekan_cli.errors import INTERNAL_ERROR_EXIT_CODE, NotFoundError, WekanError
 from wekan_cli.models import Board
-from wekan_cli.output import board_json, card_json, format_board, format_boards, format_card, to_json
+from wekan_cli.output import (
+    board_json,
+    card_json,
+    change_json,
+    format_board,
+    format_boards,
+    format_card,
+    format_change,
+    to_json,
+)
 from wekan_cli.resolve import find_card, resolve_board
 
 # Pretty exceptions are off: typer's rich tracebacks can show local variables, which may hold the password or the
@@ -43,6 +52,11 @@ BoardOpt = Annotated[
 JsonOpt = Annotated[bool, typer.Option("--json", help="Print JSON instead of text.")]
 IdsOpt = Annotated[bool, typer.Option("--ids", help="Show Wekan IDs.")]
 ArchivedOpt = Annotated[bool, typer.Option("--archived", help="Include archived cards and lists.")]
+_CREDENTIALS_HELP = "Credentials file. Default: WEKAN_CREDENTIALS, then ~/.config/wekan/credentials."
+# Typer only takes a global option before the command; every command repeats it, so `wekan boards --credentials F`
+# works too. The command's value wins over the global one.
+CredentialsOpt = Annotated[Path | None, typer.Option("--credentials", help=_CREDENTIALS_HELP)]
+NumberArg = Annotated[int, typer.Argument(help="Card number, as shown on the board (#14 → 14).")]
 
 
 @dataclass
@@ -66,12 +80,7 @@ def _version_callback(value: bool) -> None:
 @app.callback()
 def _root(
     ctx: typer.Context,
-    credentials: Annotated[
-        Path | None,
-        typer.Option(
-            "--credentials", help="Credentials file. Default: WEKAN_CREDENTIALS, then ~/.config/wekan/credentials."
-        ),
-    ] = None,
+    credentials: CredentialsOpt = None,
     version: Annotated[
         bool, typer.Option("--version", callback=_version_callback, is_eager=True, help="Show the version and exit.")
     ] = False,
@@ -83,8 +92,12 @@ def _root(
 # --- helpers ------------------------------------------------------------------------------------------------------
 
 
-def _load_credentials(ctx: typer.Context) -> Credentials:
-    creds = load_credentials(_state(ctx).credentials)
+def _credentials_override(ctx: typer.Context, override: Path | None) -> Path | None:
+    return override if override is not None else _state(ctx).credentials
+
+
+def _load_credentials(ctx: typer.Context, override: Path | None = None) -> Credentials:
+    creds = load_credentials(_credentials_override(ctx, override))
     if not is_private(creds.path):
         typer.echo(f"warning: {creds.path} is readable by others; run: chmod 600 {creds.path}", err=True)
     return creds
@@ -114,12 +127,12 @@ def version() -> None:
 
 
 @app.command()
-def whoami(ctx: typer.Context, ids: IdsOpt = False) -> None:
+def whoami(ctx: typer.Context, ids: IdsOpt = False, credentials: CredentialsOpt = None) -> None:
     """Log in (or reuse the cached token) and show the account and server.
 
     Example: wekan whoami
     """
-    creds = _load_credentials(ctx)
+    creds = _load_credentials(ctx, credentials)
     with make_client(creds) as client:
         me = client.me()
     user_id = f" ({me.get('_id', '')})" if ids else ""
@@ -127,12 +140,12 @@ def whoami(ctx: typer.Context, ids: IdsOpt = False) -> None:
 
 
 @app.command()
-def boards(ctx: typer.Context, json: JsonOpt = False, ids: IdsOpt = False) -> None:
+def boards(ctx: typer.Context, json: JsonOpt = False, ids: IdsOpt = False, credentials: CredentialsOpt = None) -> None:
     """List the boards this account is a member of.
 
     Example: wekan boards
     """
-    with make_client(_load_credentials(ctx)) as client:
+    with make_client(_load_credentials(ctx, credentials)) as client:
         rows = client.boards()
     if json:
         typer.echo(to_json([{"id": b["_id"], "title": b.get("title", "")} for b in rows]))
@@ -147,12 +160,13 @@ def board(
     archived: ArchivedOpt = False,
     json: JsonOpt = False,
     ids: IdsOpt = False,
+    credentials: CredentialsOpt = None,
 ) -> None:
     """Show a board: its lists (with WIP limits) and their cards.
 
     Example: wekan board -b my-board
     """
-    with make_client(_load_credentials(ctx)) as client:
+    with make_client(_load_credentials(ctx, credentials)) as client:
         data = _open_board(client, board)
     typer.echo(to_json(board_json(data, archived)) if json else format_board(data, archived, ids))
 
@@ -160,34 +174,36 @@ def board(
 @app.command()
 def card(
     ctx: typer.Context,
-    number: Annotated[int, typer.Argument(help="Card number, as shown on the board (#14 → 14).")],
+    number: NumberArg,
     board: BoardOpt = None,
     archived: ArchivedOpt = False,
     json: JsonOpt = False,
     ids: IdsOpt = False,
+    credentials: CredentialsOpt = None,
 ) -> None:
     """Show a card: list, labels, description and every checklist with its items.
 
     Example: wekan card 14
     """
-    with make_client(_load_credentials(ctx)) as client:
+    with make_client(_load_credentials(ctx, credentials)) as client:
         data = _open_board(client, board)
     found = find_card(data, number, include_archived=archived)
     typer.echo(to_json(card_json(data, found)) if json else format_card(data, found, ids))
 
 
 @app.command()
-def config(ctx: typer.Context, board: BoardOpt = None) -> None:
+def config(ctx: typer.Context, board: BoardOpt = None, credentials: CredentialsOpt = None) -> None:
     """Show the settings in use and where each one comes from. Never shows the password or the token.
 
     Example: wekan config
     """
-    path, source = credentials_path(_state(ctx).credentials)
+    override = _credentials_override(ctx, credentials)
+    path, source = credentials_path(override)
     lines = [f"credentials: {path} ({source})"]
     if path.exists():
         lines[0] += "" if is_private(path) else "  WARNING: readable by others, run chmod 600"
         try:
-            creds = load_credentials(_state(ctx).credentials)
+            creds = load_credentials(override)
             lines += [f"url: {creds.url}", f"username: {creds.username}", "password: set"]
             cached = TokenCache().load(creds.url, creds.username)
             expires = f", expires {cached.expires}" if cached and cached.expires else ""
@@ -208,6 +224,123 @@ def config(ctx: typer.Context, board: BoardOpt = None) -> None:
     except WekanError as exc:
         lines.append(f"board: none ({exc})")
     typer.echo("\n".join(lines))
+
+
+# --- write commands -----------------------------------------------------------------------------------------------
+
+
+def _echo_changes(changes: list[actions.Change], json: bool, single: bool) -> None:
+    if json:
+        data = [change_json(c) for c in changes]
+        typer.echo(to_json(data[0] if single else data))
+    else:
+        typer.echo("\n".join(format_change(c) for c in changes))
+
+
+def _read_text(source: str) -> str:
+    """Read a file, or stdin for ``-``."""
+    if source == "-":
+        return typer.get_text_stream("stdin").read()
+    path = Path(source).expanduser()
+    if not path.is_file():
+        raise NotFoundError(f"no file {source}")
+    return path.read_text(encoding="utf-8")
+
+
+@app.command("add-item")
+def add_item(
+    ctx: typer.Context,
+    number: NumberArg,
+    text: Annotated[str, typer.Argument(help="The item's title.")],
+    done: Annotated[bool, typer.Option("--done", help="Add it ticked.")] = False,
+    checklist: Annotated[
+        str | None,
+        typer.Option("--checklist", help="Checklist title. Default: the card's only one, or a new 'Steps'."),
+    ] = None,
+    numbered: Annotated[bool, typer.Option("--numbered", help="Put the next free (N) in front.")] = False,
+    board: BoardOpt = None,
+    json: JsonOpt = False,
+    credentials: CredentialsOpt = None,
+) -> None:
+    """Add a checklist item to a card.
+
+    Example: wekan add-item 14 "Write the tests" --numbered
+    """
+    with make_client(_load_credentials(ctx, credentials)) as client:
+        data = _open_board(client, board)
+        change = actions.add_item(client, data, find_card(data, number), text, done, checklist, numbered)
+    _echo_changes([change], json, single=True)
+
+
+@app.command()
+def tick(
+    ctx: typer.Context,
+    number: NumberArg,
+    match: Annotated[
+        list[str], typer.Argument(help="Items to tick: a number N matches '(N) …', other text part of the title.")
+    ],
+    undo: Annotated[bool, typer.Option("--undo", help="Untick instead.")] = False,
+    all_matches: Annotated[bool, typer.Option("--all", help="Tick every item a match fits.")] = False,
+    board: BoardOpt = None,
+    json: JsonOpt = False,
+    credentials: CredentialsOpt = None,
+) -> None:
+    """Tick (or untick) checklist items on a card, across all its checklists.
+
+    Example: wekan tick 14 2 3
+    """
+    with make_client(_load_credentials(ctx, credentials)) as client:
+        data = _open_board(client, board)
+        changes = actions.tick(client, data, find_card(data, number), match, undo, all_matches)
+    _echo_changes(changes, json, single=False)
+
+
+@app.command()
+def move(
+    ctx: typer.Context,
+    number: NumberArg,
+    to_list: Annotated[str, typer.Argument(metavar="LIST", help="Target list title (case-insensitive).")],
+    from_list: Annotated[
+        str | None, typer.Option("--from", help="Only move when the card is in this list now.")
+    ] = None,
+    swimlane: Annotated[
+        str | None, typer.Option("--swimlane", help="Swimlane, when the list title repeats across swimlanes.")
+    ] = None,
+    over_wip: Annotated[
+        bool, typer.Option("--over-wip", help="Move into a full hard-limited list anyway (an OK'd exception).")
+    ] = False,
+    board: BoardOpt = None,
+    json: JsonOpt = False,
+    credentials: CredentialsOpt = None,
+) -> None:
+    """Move a card to another list. A full hard WIP limit refuses the move (exit 7); a soft one warns.
+
+    Example: wekan move 14 Doing --from "To Do"
+    """
+    with make_client(_load_credentials(ctx, credentials)) as client:
+        data = _open_board(client, board)
+        change = actions.move(client, data, find_card(data, number), to_list, from_list, swimlane, over_wip)
+    _echo_changes([change], json, single=True)
+
+
+@app.command()
+def describe(
+    ctx: typer.Context,
+    number: NumberArg,
+    file: Annotated[str, typer.Option("--file", help="File with the new description (Markdown), or - for stdin.")],
+    board: BoardOpt = None,
+    json: JsonOpt = False,
+    credentials: CredentialsOpt = None,
+) -> None:
+    """Replace a card's description.
+
+    Example: wekan describe 14 --file notes.md
+    """
+    text = _read_text(file)
+    with make_client(_load_credentials(ctx, credentials)) as client:
+        data = _open_board(client, board)
+        change = actions.describe(client, data, find_card(data, number), text)
+    _echo_changes([change], json, single=True)
 
 
 def main() -> None:

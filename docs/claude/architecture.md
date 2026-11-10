@@ -7,11 +7,12 @@
 | `cli.py` | typer app: commands, options, output calls. No HTTP or parsing logic. `main()` turns errors into one stderr line + exit code. `make_client()` is the seam tests replace. | done (v0.1.0) |
 | `errors.py` | `WekanError` and subclasses, each with its exit code | done |
 | `config.py` | credentials parser, `~/.config/wekan/config.toml` (board/user aliases), `.wekan` lookup (current folder and up), board resolution with its source | done (v0.1.0) |
-| `client.py` | `WekanClient` around `httpx.Client`: form-encoded login, Bearer token, token cache, one re-login on an auth failure, error mapping | done (v0.1.0) |
+| `client.py` | `WekanClient` around `httpx.Client`: form-encoded login, Bearer token, token cache, one re-login on an auth failure, error mapping; `get`/`post`/`put`/`delete` | done (v0.2.0 writes) |
 | `cache.py` | `~/.cache/wekan/`: the token (file 600, folder 700, atomic writes) | done (v0.1.0) |
 | `models.py` | dataclasses built from the export: Board, Swimlane, WList, Card, Checklist, Item, Label, User, WipLimit; drops soft-deleted objects, orders by `sort` | done (v0.1.0) |
-| `resolve.py` | name → object: board (alias, ID, title), card (`cardNumber`); list and item matching come in v0.2.0 | done (v0.1.0) |
-| `output.py` | plain text and `--json`; `--markdown` comes in v0.3.0 | done (v0.1.0) |
+| `resolve.py` | name → object: board (alias, ID, title), card (`cardNumber`), list (title, swimlane), checklist, items (`(N)` or part of the title, across checklists) | done (v0.2.0) |
+| `actions.py` | the write commands: change, read back from a fresh export, return a `Change` (no typer, no printing) | v0.2.0 PR A: add-item, tick, move, describe |
+| `output.py` | plain text and `--json` (boards, cards, changes); `--markdown` comes in v0.3.0 | done (v0.2.0) |
 
 ## Data flow
 
@@ -41,5 +42,7 @@ read if big boards get slow.
   **The API doesn't enforce them**: the tool does.
 - `POST` card ignores `labelIds`; set labels with a `PUT` afterwards. `labelIds` and `assignees` replace the whole list.
 - Checklist item `PUT` needs a JSON body; one call can tick and rename. Item and card `DELETE` are hard deletes.
+- A card `PUT` goes through its current list (`/lists/:l/cards/:c`); through the wrong list it answers an empty 200 and
+  changes nothing. An empty `description` answers `404 {"message":"Error"}`: send a single space to clear one.
 - A moved card goes to the top of its new list. Lists can't be ordered through the API.
 - Checklist titles are Markdown: "1. Step" renders as "1." for every item; use "(1) Step".

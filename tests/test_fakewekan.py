@@ -59,3 +59,41 @@ def test_user_boards_lists_the_fixture_board(http: httpx.Client) -> None:
 def test_requests_are_recorded(fake_wekan: FakeWekan, http: httpx.Client) -> None:
     http.get("/api/user", headers=AUTH)
     assert [r.url.path for r in fake_wekan.requests] == ["/api/user"]
+
+
+CARD_TWO = "/api/boards/boardDemo00000001/cards/cardTwo0000000001"
+
+
+def test_add_and_tick_item(fake_wekan: FakeWekan, http: httpx.Client) -> None:
+    created = http.post(f"{CARD_TWO}/checklists/clTwoChecks000001/items", json={"title": "Lint"}, headers=AUTH)
+    item_id = created.json()["_id"]
+    item = fake_wekan.find("boardDemo00000001", "checklistItems", item_id)
+    assert item is not None and item["sort"] == 1 and item["isFinished"] is False
+    http.put(f"{CARD_TWO}/checklists/clTwoChecks000001/items/{item_id}", json={"isFinished": True}, headers=AUTH)
+    assert item["isFinished"] is True
+
+
+def test_card_put_through_wrong_list_is_an_empty_200(fake_wekan: FakeWekan, http: httpx.Client) -> None:
+    path = "/api/boards/boardDemo00000001/lists/listBacklog000001/cards/cardTwo0000000001"
+    response = http.put(path, json={"listId": "listDone000000001"}, headers=AUTH)
+    assert response.status_code == 200 and response.content == b""
+    card = fake_wekan.find("boardDemo00000001", "cards", "cardTwo0000000001")
+    assert card is not None and card["listId"] == "listDoing00000001"
+
+
+def test_drop_writes(fake_wekan: FakeWekan, http: httpx.Client) -> None:
+    fake_wekan.drop_writes = True
+    response = http.post(f"{CARD_TWO}/checklists", json={"title": "Ghost"}, headers=AUTH)
+    assert response.status_code == 200
+    assert len(fake_wekan.boards["boardDemo00000001"]["checklists"]) == 2
+
+
+def test_write_needs_auth(http: httpx.Client) -> None:
+    response = http.post(f"{CARD_TWO}/checklists", json={"title": "x"})
+    assert response.json()["statusCode"] == 401
+
+
+def test_empty_description_is_refused(http: httpx.Client) -> None:
+    path = "/api/boards/boardDemo00000001/lists/listDoing00000001/cards/cardTwo0000000001"
+    response = http.put(path, json={"description": ""}, headers=AUTH)
+    assert response.status_code == 404 and response.json() == {"message": "Error"}

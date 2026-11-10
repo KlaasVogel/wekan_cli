@@ -73,6 +73,41 @@ class WekanClient:
         """
         return self._request("GET", path)
 
+    def post(self, path: str, body: dict[str, Any]) -> Any:
+        """POST a JSON body (Wekan wants JSON everywhere except the login).
+
+        Args:
+            path: Path below the server URL.
+            body: The JSON body.
+
+        Returns:
+            The parsed JSON answer (for a create: ``{"_id": ...}``).
+        """
+        return self._request("POST", path, body)
+
+    def put(self, path: str, body: dict[str, Any]) -> Any:
+        """PUT a JSON body.
+
+        Args:
+            path: Path below the server URL.
+            body: The JSON body.
+
+        Returns:
+            The parsed JSON answer.
+        """
+        return self._request("PUT", path, body)
+
+    def delete(self, path: str) -> Any:
+        """DELETE a resource. Wekan's deletes through the API are hard deletes.
+
+        Args:
+            path: Path below the server URL.
+
+        Returns:
+            The parsed JSON answer.
+        """
+        return self._request("DELETE", path)
+
     def me(self) -> dict[str, Any]:
         """Return the logged-in account (``GET /api/user``)."""
         data = self.get("/api/user")

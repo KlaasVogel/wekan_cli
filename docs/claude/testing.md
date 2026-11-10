@@ -10,6 +10,8 @@
 - **No real Wekan.** `tests/fakewekan.py` is an in-memory Wekan behind `httpx.MockTransport`. It copies the real API's
   quirks (HTML `200` for unknown routes, `200` + error body for a bad token on board routes, form-encoded login).
   Add routes there as commands need them, and test the fake itself in `tests/test_fakewekan.py`.
+  Write routes change the fake's state; `drop_writes = True` answers writes without storing them, to test the
+  read-back check (exit 8).
 - Board data comes from export-shaped JSON in `tests/fixtures/`. **All IDs, names and titles are made up**; never
   record a real token or login response.
 - `conftest.py` points `HOME` and the XDG folders at a temp folder for every test, so the real config, credentials
