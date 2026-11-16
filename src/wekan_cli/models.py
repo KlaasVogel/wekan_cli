@@ -15,14 +15,30 @@ def _live(obj: Json) -> bool:
     return not obj.get("deletedAt")
 
 
-def _sort_key(index: int, obj: Json) -> tuple[float, int]:
-    """Sort by Wekan's ``sort`` field, keeping export order for objects without one (new lists get ``None``)."""
+def _has_sort(obj: Json) -> bool:
+    """True when the object has a numeric ``sort`` (new lists get ``None`` until Wekan renumbers them)."""
     sort = obj.get("sort")
-    return (float(sort) if isinstance(sort, int | float) else float("inf"), index)
+    return isinstance(sort, int | float) and not isinstance(sort, bool)
 
 
-def _ordered(items: list[Json]) -> list[Json]:
-    return [obj for _, obj in sorted(enumerate(items), key=lambda pair: _sort_key(*pair))]
+def _ordered(items: list[Json], missing_first: bool = False) -> list[Json]:
+    """Order by Wekan's ``sort`` field; objects without one keep their export order among themselves.
+
+    Args:
+        items: Raw export objects.
+        missing_first: Put objects without ``sort`` first, as Wekan's browser view does for lists. Otherwise they
+            go last.
+
+    Returns:
+        The objects in display order.
+    """
+    missing = float("-inf") if missing_first else float("inf")
+
+    def key(pair: tuple[int, Json]) -> tuple[float, int]:
+        index, obj = pair
+        return (float(obj["sort"]) if _has_sort(obj) else missing, index)
+
+    return [obj for _, obj in sorted(enumerate(items), key=key)]
 
 
 @dataclass(frozen=True)
@@ -79,6 +95,8 @@ class WList:
     swimlane_id: str
     archived: bool
     wip: WipLimit | None
+    positioned: bool = True
+    """False when the list has no ``sort`` yet: the browser shows it first and its place isn't fixed."""
 
 
 @dataclass(frozen=True)
@@ -161,8 +179,9 @@ class Board:
                     swimlane_id=raw.get("swimlaneId", ""),
                     archived=bool(raw.get("archived")),
                     wip=WipLimit.from_json(raw.get("wipLimit")),
+                    positioned=_has_sort(raw),
                 )
-                for raw in _ordered([lst for lst in data.get("lists", []) if _live(lst)])
+                for raw in _ordered([lst for lst in data.get("lists", []) if _live(lst)], missing_first=True)
             ),
             cards=tuple(
                 Card(

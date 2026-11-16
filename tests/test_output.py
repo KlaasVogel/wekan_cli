@@ -1,5 +1,6 @@
 """Tests for the text and JSON output."""
 
+import copy
 import json
 
 from fakewekan import load_fixture
@@ -7,6 +8,7 @@ from fakewekan import load_fixture
 from wekan_cli.actions import Change
 from wekan_cli.models import Board
 from wekan_cli.output import (
+    UNPLACED_NOTE,
     board_json,
     card_json,
     change_json,
@@ -38,6 +40,17 @@ def test_board_text() -> None:
 def test_board_text_archived_and_ids() -> None:
     text = format_board(BOARD, include_archived=True, ids=True)
     assert "#4 An old idea (archived) (cardFour000000001)" in text
+
+
+def test_list_without_position_is_flagged() -> None:
+    data = copy.deepcopy(load_fixture("board_export.json"))
+    data["lists"][0]["sort"] = None  # Backlog
+    board = Board.from_export(data)
+    text = format_board(board, False, False)
+    assert f"== Backlog {UNPLACED_NOTE}" in text
+    assert UNPLACED_NOTE not in format_board(BOARD, False, False)
+    lists = {lst["title"]: lst for lst in board_json(board, False)["lists"]}
+    assert lists["Backlog"]["positioned"] is False and lists["Done"]["positioned"] is True
 
 
 def test_full_list_is_flagged() -> None:

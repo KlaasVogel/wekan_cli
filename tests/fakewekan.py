@@ -229,6 +229,12 @@ class FakeWekan:
         if body.get("description") == "":
             return httpx.Response(404, json={"message": "Error"})
         if not self.drop_writes:
+            target = body.get("listId")
+            if target and target != card["listId"]:
+                # Wekan puts a moved card at the top of its new list.
+                board = self.boards[match["board"]]
+                sorts = [c.get("sort", 0) for c in board["cards"] if c["listId"] == target]
+                card["sort"] = min(sorts, default=1) - 1
             allowed = ("listId", "swimlaneId", "description", "title", "labelIds")
             card.update({k: v for k, v in body.items() if k in allowed})
         return httpx.Response(200, json={"_id": card["_id"]})
@@ -247,7 +253,8 @@ class FakeWekan:
             "members": [],
             "description": body.get("description", ""),
             "archived": False,
-            "sort": -1,  # a new card goes to the top
+            # Wekan puts a new card at the bottom: sort = number of cards already in the list.
+            "sort": sum(1 for c in board["cards"] if c["listId"] == match["list"]),
             "userId": body.get("authorId", ""),
         }
         if not self.drop_writes:

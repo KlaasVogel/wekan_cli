@@ -38,10 +38,28 @@ def test_soft_deleted_objects_are_dropped() -> None:
     assert 1 not in [c.number for c in Board.from_export(data).cards]
 
 
-def test_sort_field_orders_lists_and_none_keeps_export_order() -> None:
+def test_sort_field_orders_lists() -> None:
     data = copy.deepcopy(load_fixture("board_export.json"))
-    data["lists"][4]["sort"] = 0  # "Done" gets an explicit sort: it comes first, the rest keep their order
-    assert [lst.title for lst in Board.from_export(data).lists][:2] == ["Done", "Backlog"]
+    data["lists"][4]["sort"] = -1  # "Done" moves to the front
+    lists = Board.from_export(data).lists
+    assert [lst.title for lst in lists] == ["Done", "Backlog", "To Do", "Doing", "Waiting"]
+    assert all(lst.positioned for lst in lists)
+
+
+def test_lists_without_sort_come_first_in_export_order() -> None:
+    """Wekan's browser shows lists without ``sort`` first; the tool must show the same order."""
+    data = copy.deepcopy(load_fixture("board_export.json"))
+    data["lists"][4]["sort"] = None  # "Done" has no position yet
+    data["lists"][2]["sort"] = None  # nor has "Doing"
+    lists = Board.from_export(data).lists
+    assert [lst.title for lst in lists] == ["Doing", "Done", "Backlog", "To Do", "Waiting"]
+    assert [lst.title for lst in lists if not lst.positioned] == ["Doing", "Done"]
+
+
+def test_checklists_without_sort_still_go_last() -> None:
+    data = copy.deepcopy(load_fixture("board_export.json"))
+    data["checklists"][0]["sort"] = None  # "Steps"
+    assert [c.title for c in Board.from_export(data).checklists] == ["Checks", "Steps"]
 
 
 def test_names() -> None:

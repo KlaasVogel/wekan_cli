@@ -44,5 +44,8 @@ read if big boards get slow.
 - Checklist item `PUT` needs a JSON body; one call can tick and rename. Item and card `DELETE` are hard deletes.
 - A card `PUT` goes through its current list (`/lists/:l/cards/:c`); through the wrong list it answers an empty 200 and
   changes nothing. An empty `description` answers `404 {"message":"Error"}`: send a single space to clear one.
-- A moved card goes to the top of its new list. Lists can't be ordered through the API.
+- A moved card goes to the top of its new list (`sort` = lowest − 1); a new card goes to the bottom (`sort` = number of
+  cards already in the list). Lists can't be ordered through the API.
+- Lists made through the API or in the browser have `sort: None` until Wekan renumbers them (it did so on a board load,
+  2026-11-10). The browser shows them first; the tool does the same and marks them "no position yet".
 - Checklist titles are Markdown: "1. Step" renders as "1." for every item; use "(1) Step".
