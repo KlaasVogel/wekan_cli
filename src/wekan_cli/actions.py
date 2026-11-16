@@ -345,7 +345,7 @@ def new_card(
     force: bool = False,
     over_wip: bool = False,
 ) -> Change:
-    """Create a card at the top of a list, with the logged-in account as its author.
+    """Create a card at the bottom of a list, with the logged-in account as its author.
 
     Args:
         client: The API client.

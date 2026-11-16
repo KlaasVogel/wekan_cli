@@ -363,7 +363,7 @@ def new_card(
     json: JsonOpt = False,
     credentials: CredentialsOpt = None,
 ) -> None:
-    """Create a card at the top of a list, with you as its author. Refuses a duplicate title (exit 7).
+    """Create a card at the bottom of a list, with you as its author. Refuses a duplicate title (exit 7).
 
     Example: wekan new-card Backlog "Write the docs" --labels Docs --file card.md
     """

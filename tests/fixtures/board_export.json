@@ -21,13 +21,13 @@
     {"_id": "swimDefault000001", "title": "Default", "archived": false, "sort": 0}
   ],
   "lists": [
-    {"_id": "listBacklog000001", "title": "Backlog", "swimlaneId": "swimDefault000001", "archived": false, "sort": null},
-    {"_id": "listToDo000000001", "title": "To Do", "swimlaneId": "swimDefault000001", "archived": false, "sort": null},
-    {"_id": "listDoing00000001", "title": "Doing", "swimlaneId": "swimDefault000001", "archived": false, "sort": null,
+    {"_id": "listBacklog000001", "title": "Backlog", "swimlaneId": "swimDefault000001", "archived": false, "sort": 0},
+    {"_id": "listToDo000000001", "title": "To Do", "swimlaneId": "swimDefault000001", "archived": false, "sort": 1},
+    {"_id": "listDoing00000001", "title": "Doing", "swimlaneId": "swimDefault000001", "archived": false, "sort": 2,
      "wipLimit": {"value": 2, "enabled": true}},
-    {"_id": "listWaiting000001", "title": "Waiting", "swimlaneId": "swimDefault000001", "archived": false, "sort": null,
+    {"_id": "listWaiting000001", "title": "Waiting", "swimlaneId": "swimDefault000001", "archived": false, "sort": 3,
      "wipLimit": {"value": 5, "enabled": true, "soft": true}},
-    {"_id": "listDone000000001", "title": "Done", "swimlaneId": "swimDefault000001", "archived": false, "sort": null}
+    {"_id": "listDone000000001", "title": "Done", "swimlaneId": "swimDefault000001", "archived": false, "sort": 4}
   ],
   "cards": [
     {"_id": "cardOne0000000001", "cardNumber": 1, "title": "Set up the repo", "listId": "listDone000000001",

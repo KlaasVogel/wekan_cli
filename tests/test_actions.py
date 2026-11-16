@@ -135,6 +135,12 @@ def test_move(client: WekanClient) -> None:
     assert find_card(read(client), 3).list_id == "listDoing00000001"
 
 
+def test_moved_card_goes_to_the_top(client: WekanClient) -> None:
+    actions.move(client, *card(client, 3), "Doing")
+    doing = [c.number for c in read(client).cards if c.list_id == "listDoing00000001"]
+    assert doing[0] == 3
+
+
 def test_move_already_there(client: WekanClient, fake_wekan: FakeWekan) -> None:
     change = actions.move(client, *card(client, 2), "Doing")
     assert not change.changed
@@ -223,6 +229,12 @@ def test_new_card_with_labels_and_description(client: WekanClient, fake_wekan: F
     raw = next(c for c in fake_wekan.boards[BOARD_ID]["cards"] if c["cardNumber"] == 5)
     assert raw["userId"] == USER_ID and raw["swimlaneId"] == "swimDefault000001"
     assert raw["labelIds"] == ["lblRobot", "lblDecision"] and raw["description"] == "Depends on: #2"
+
+
+def test_new_card_goes_to_the_bottom(client: WekanClient) -> None:
+    number = actions.new_card(client, read(client), "Backlog", "Last in line").card
+    backlog = [c.number for c in read(client).cards if c.list_id == "listBacklog000001" and not c.archived]
+    assert backlog[-1] == number and len(backlog) > 1
 
 
 def test_new_card_duplicate_title_is_refused(client: WekanClient, fake_wekan: FakeWekan) -> None:

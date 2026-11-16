@@ -13,6 +13,9 @@ def to_json(data: Any) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False, sort_keys=False)
 
 
+UNPLACED_NOTE = "(no position yet: drag it into place in the browser)"
+
+
 def _id(value: str, ids: bool) -> str:
     return f" ({value})" if ids else ""
 
@@ -25,7 +28,8 @@ def _list_header(board: Board, lst: WList, include_archived: bool, ids: bool) ->
         flag = " FULL" if count >= lst.wip.value else ""
         wip = f" [{count}/{lst.wip.value} {kind}{flag}]"
     archived = " (archived)" if lst.archived else ""
-    return f"== {lst.title}{wip}{archived}{_id(lst.id, ids)}"
+    unplaced = "" if lst.positioned else f" {UNPLACED_NOTE}"
+    return f"== {lst.title}{wip}{archived}{unplaced}{_id(lst.id, ids)}"
 
 
 def _card_line(board: Board, card: Card, ids: bool) -> str:
@@ -128,6 +132,7 @@ def board_json(board: Board, include_archived: bool) -> dict[str, Any]:
                 "title": lst.title,
                 "swimlane_id": lst.swimlane_id,
                 "wip_limit": ({"value": lst.wip.value, "hard": lst.wip.hard} if lst.wip is not None else None),
+                "positioned": lst.positioned,
                 "cards": [
                     {
                         "number": c.number,
